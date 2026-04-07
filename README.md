@@ -84,7 +84,7 @@ alvasta onboard
 ### Option B — from source (current path)
 
 ```bash
-git clone https://github.com/alvasta-it/alvasta-gateway.git
+git clone https://github.com/LordVladious98/alvasta-gateway.git
 cd alvasta-gateway
 npm install
 npm link  # makes `alvasta` and `alvasta-gateway` available globally
@@ -301,10 +301,10 @@ A serialized implementation would show ~24s spread; we measure ~400ms.
 
 ## Companion: Alvasta Plugin
 
-Alvasta also ships as a [Claude Code plugin](https://github.com/alvasta-it/alvasta-plugin) for in-terminal use:
+Alvasta also ships as a [Claude Code plugin](https://github.com/LordVladious98/alvasta-plugin) for in-terminal use:
 
 ```bash
-/plugin marketplace add alvasta-it/alvasta-plugin
+/plugin marketplace add LordVladious98/alvasta-plugin
 /plugin install alvasta@alvasta
 /alvasta:start
 ```
@@ -318,7 +318,7 @@ The plugin shares the same memory directory, so the gateway and the plugin work 
 PRs welcome. Keep it simple, keep it inspectable. The whole project should be readable in an afternoon.
 
 ```bash
-git clone https://github.com/alvasta-it/alvasta-gateway.git
+git clone https://github.com/LordVladious98/alvasta-gateway.git
 cd alvasta-gateway
 npm install
 npm test  # smoke test (requires `claude` authenticated)

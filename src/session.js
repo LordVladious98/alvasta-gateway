@@ -72,9 +72,16 @@ export class SessionManager extends EventEmitter {
   }
 
   send(sessionId, message) {
-    const runner = this.runners.get(sessionId);
+    let runner = this.runners.get(sessionId);
     if (!runner) {
-      throw new Error(`No runner for session ${sessionId}`);
+      // Runner might have exited between messages (claude child crashed,
+      // session aged out, etc). Try to respawn from the persisted session.
+      const session = this.store.getSession(sessionId);
+      if (!session) {
+        throw new Error(`No session ${sessionId}`);
+      }
+      console.log(`[session] runner missing for ${sessionId}, respawning...`);
+      runner = this.spawnRunner(session);
     }
     this.store.addMessage(sessionId, 'user', JSON.stringify(message));
     runner.send(message);

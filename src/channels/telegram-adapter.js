@@ -16,12 +16,13 @@ const EDIT_INTERVAL_MS = 600; // throttle edits to avoid Telegram rate limits
 const MAX_MESSAGE_LEN = 4000;
 
 class TelegramAdapter {
-  constructor({ token, gatewayUrl, allowlist = [], ownerChatId = null, onAllowlistUpdate }) {
+  constructor({ token, gatewayUrl, allowlist = [], ownerChatId = null, pairCode = null, onAllowlistUpdate }) {
     this.token = token;
     this.api = `https://api.telegram.org/bot${token}`;
     this.gatewayUrl = gatewayUrl;
     this.allowlist = new Set(allowlist);
     this.ownerChatId = ownerChatId;
+    this.pairCode = pairCode; // if set, claiming requires sending this code
     this.onAllowlistUpdate = onAllowlistUpdate;
     this.offset = 0;
     this.running = false;
@@ -73,13 +74,28 @@ class TelegramAdapter {
 
     if (!text) return; // ignore non-text for now
 
-    // Ownership claim
+    // Ownership claim — protected by pairing code if one is set
     if (!this.ownerChatId) {
+      // If a pair code is required, the message must contain it
+      if (this.pairCode) {
+        if (!text.includes(this.pairCode)) {
+          info(`telegram :: rejected pair attempt from ${chatId} (no/wrong code)`);
+          await this.sendMessage(chatId, '🔒 This Alvasta instance requires a pairing code to claim ownership. The owner can generate one with: alvasta channel pair telegram');
+          return;
+        }
+        info(`telegram :: pair code matched, claiming owner ${chatId}`);
+      }
+
       this.ownerChatId = chatId;
       this.allowlist.add(chatId);
+      this.pairCode = null; // single-use
       info(`telegram :: owner claimed: ${chatId} (${message.from?.first_name})`);
-      this.onAllowlistUpdate?.({ ownerChatId: chatId, allowlist: [...this.allowlist] });
-      await this.sendMessage(chatId, `Welcome ${message.from?.first_name}. You're now the owner of this Alvasta instance. Send any message to start.`);
+      this.onAllowlistUpdate?.({
+        ownerChatId: chatId,
+        allowlist: [...this.allowlist],
+        pairCode: null
+      });
+      await this.sendMessage(chatId, `✓ Paired. Welcome ${message.from?.first_name} — you're now the owner of this Alvasta instance. Send any message to start.`);
       return;
     }
 
@@ -254,10 +270,12 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
     gatewayUrl,
     allowlist: tg.allowlist || [],
     ownerChatId: tg.ownerChatId,
-    onAllowlistUpdate: ({ ownerChatId, allowlist }) => {
+    pairCode: tg.pairCode || null,
+    onAllowlistUpdate: ({ ownerChatId, allowlist, pairCode }) => {
       const c = loadConfig();
       c.channels.telegram.ownerChatId = ownerChatId;
       c.channels.telegram.allowlist = allowlist;
+      if (pairCode === null) delete c.channels.telegram.pairCode;
       saveConfig(c);
     }
   });

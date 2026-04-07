@@ -7,6 +7,7 @@ import { upgradeCmd } from '../src/cli/upgrade.js';
 import { memoryCmd } from '../src/cli/memory.js';
 import { toolCmd } from '../src/cli/tool.js';
 import { daemonCmd } from '../src/cli/daemon.js';
+import { pairCmd } from '../src/cli/pair.js';
 import { color, PATHS, ensureWorkspace, info } from '../src/cli/util.js';
 
 const VERSION = '0.2.0-alpha.1';
@@ -31,9 +32,10 @@ ${color.bold('Core:')}
   ${color.cyan('upgrade')}              Pull latest from git, reinstall deps, restart
 
 ${color.bold('Channels:')}
-  ${color.cyan('channel list')}         List configured channels
-  ${color.cyan('channel add <type>')}   Add a channel (telegram | discord | slack | web)
-  ${color.cyan('channel remove <name>')}  Remove a channel
+  ${color.cyan('channel list')}              List configured channels
+  ${color.cyan('channel add <type>')}        Add a channel (telegram | web)
+  ${color.cyan('channel pair <type>')}       Generate a pairing code for ownership claim
+  ${color.cyan('channel remove <name>')}     Remove a channel
 
 ${color.bold('Sessions:')}
   ${color.cyan('session list')}         List active gateway sessions
@@ -88,6 +90,10 @@ async function main() {
       break;
     case 'channel': {
       const sub = args[1];
+      if (sub === 'pair') {
+        await pairCmd(args.slice(2));
+        break;
+      }
       if (sub === 'list') {
         const { loadConfig } = await import('../src/cli/util.js');
         const config = loadConfig();

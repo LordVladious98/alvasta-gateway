@@ -41,7 +41,7 @@ export const PATHS = {
 PATHS.configFile = join(PATHS.configDir, 'config.json');
 PATHS.pidFile = join(PATHS.configDir, 'gateway.pid');
 PATHS.logFile = join(PATHS.configDir, 'gateway.log');
-PATHS.dbFile = join(PATHS.configDir, 'sessions.db');
+PATHS.dbFile = join(PATHS.configDir, 'sessions.json');
 
 export function ensureConfigDir() {
   if (!existsSync(PATHS.configDir)) {

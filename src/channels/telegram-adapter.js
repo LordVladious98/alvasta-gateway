@@ -8,6 +8,7 @@
 // Or as a child of the main daemon (future).
 
 import { WebSocket } from 'ws';
+import { pathToFileURL } from 'node:url';
 import { loadConfig, saveConfig, color, ok, fail, info } from '../cli/util.js';
 
 const POLL_TIMEOUT = 30; // seconds (long-polling)
@@ -217,8 +218,9 @@ class TelegramAdapter {
   }
 }
 
-// Standalone runner
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Standalone runner — cross-platform check using pathToFileURL
+// (Windows paths use backslashes, so the naive `file://${path}` check fails there)
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const config = loadConfig();
   const tg = config.channels.telegram;
   if (!tg?.enabled || !tg.token) {

@@ -57,12 +57,12 @@ export class AgentRunner extends EventEmitter {
       '--verbose', // required by Claude Code when using stream-json output
       '--include-partial-messages',
       // Hard bypass: in non-interactive gateway mode, there is NO human at a
-      // terminal to answer permission prompts. We must guarantee no tool call
-      // ever blocks. --dangerously-skip-permissions is the only flag that
-      // actually skips the prompt entirely (--permission-mode bypassPermissions
-      // alone still surfaces permission events that the model interprets as
-      // "ask the user to approve").
-      '--dangerously-skip-permissions'
+      // terminal to answer permission prompts. --dangerously-skip-permissions
+      // is the only flag that actually skips the prompt entirely.
+      '--dangerously-skip-permissions',
+      // Pre-allow every common tool by name. Belt-and-suspenders alongside
+      // dangerously-skip-permissions in case the model surfaces approval text.
+      '--allowed-tools', 'Bash Read Write Edit Glob Grep WebFetch WebSearch Task TodoWrite NotebookEdit'
     ];
 
     if (this.claudeSessionId) {

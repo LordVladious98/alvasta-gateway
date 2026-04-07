@@ -3,13 +3,17 @@
 import { AlvastaGateway } from '../src/gateway.js';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
+import { ensureWorkspace, PATHS } from '../src/cli/util.js';
+
+// Bootstrap the workspace dir + CLAUDE.md persona before spawning any session
+ensureWorkspace();
 
 const args = process.argv.slice(2);
 const opts = {
   port: parseInt(process.env.ALVASTA_PORT || '18789', 10),
   host: process.env.ALVASTA_HOST || '127.0.0.1',
-  dbPath: process.env.ALVASTA_DB || resolve(homedir(), '.alvasta/sessions.db'),
-  workingDir: process.env.ALVASTA_WORKDIR || process.cwd(),
+  dbPath: process.env.ALVASTA_DB || PATHS.dbFile,
+  workingDir: process.env.ALVASTA_WORKDIR || PATHS.workspaceDir,
   agentOptions: {
     permissionMode: process.env.ALVASTA_PERMISSION_MODE || 'acceptEdits',
     model: process.env.ALVASTA_MODEL,

@@ -75,12 +75,25 @@ export async function upgradeCmd() {
 
   info(`${behind} new commit${behind === 1 ? '' : 's'} on origin/main — pulling...`);
 
-  // 6. git pull
-  const pull = run('git', ['pull', '--ff-only', 'origin', 'main']);
+  // 6. git pull (with autostash for Windows line-ending edge cases)
+  let pull = run('git', ['pull', '--ff-only', '--autostash', 'origin', 'main']);
   if (pull.status !== 0) {
-    fail('git pull failed: ' + (pull.stderr || '').trim());
-    info('Resolve conflicts manually then re-run alvasta upgrade.');
-    return;
+    const err = (pull.stderr || '').toString();
+    // Common Windows case: line ending differences flagged as local changes.
+    // Try discarding them and retrying.
+    if (err.includes('would be overwritten by merge') || err.includes('Your local changes')) {
+      warn('Local file differences detected (likely Windows CRLF/LF). Discarding and retrying...');
+      run('git', ['checkout', '--', '.']);
+      pull = run('git', ['pull', '--ff-only', 'origin', 'main']);
+    }
+    if (pull.status !== 0) {
+      fail('git pull failed: ' + ((pull.stderr || '').toString().trim() || 'unknown'));
+      info('To force a clean state:');
+      info('  git -C ' + REPO_ROOT + ' fetch origin');
+      info('  git -C ' + REPO_ROOT + ' reset --hard origin/main');
+      info('Then re-run: alvasta upgrade');
+      return;
+    }
   }
   ok('Pulled');
 

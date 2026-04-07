@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ALVASTA :: gateway</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div class="grain"></div>
+<div class="bg-grid"></div>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="brand-mark"></div>
+    <span class="brand-name">ALVASTA</span>
+    <span class="brand-tag">// gateway</span>
+  </div>
+  <div class="status-pill" id="statusPill">
+    <span class="dot dot-pending"></span>
+    <span class="status-text">connecting...</span>
+  </div>
+</header>
+
+<div class="layout">
+  <!-- LEFT: SESSIONS / NAV -->
+  <aside class="sidebar">
+    <div class="sb-section">
+      <div class="sb-h">// SYSTEM</div>
+      <div class="kv">
+        <div class="k">port</div><div class="v" id="metaPort">--</div>
+        <div class="k">host</div><div class="v" id="metaHost">--</div>
+        <div class="k">version</div><div class="v" id="metaVersion">0.2.0</div>
+        <div class="k">sessions</div><div class="v" id="metaSessions">0</div>
+        <div class="k">clients</div><div class="v" id="metaClients">0</div>
+      </div>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-h">// SESSIONS</div>
+      <ul class="session-list" id="sessionList">
+        <li class="empty">no sessions yet</li>
+      </ul>
+    </div>
+
+    <div class="sb-section">
+      <div class="sb-h">// LINKS</div>
+      <a class="lnk" href="https://github.com/LordVladious98/alvasta-gateway" target="_blank">github / gateway</a>
+      <a class="lnk" href="https://github.com/LordVladious98/alvasta-plugin" target="_blank">github / plugin</a>
+      <a class="lnk" href="https://alvasta.com.au" target="_blank">alvasta.com.au</a>
+    </div>
+  </aside>
+
+  <!-- CENTER: CHAT -->
+  <main class="chat">
+    <div class="chat-header">
+      <div class="ch-title">CHAT // <span id="sessionLabel">awaiting connection</span></div>
+      <div class="ch-actions">
+        <button class="btn-ghost" id="clearBtn">clear</button>
+        <button class="btn-ghost" id="reconnectBtn">reconnect</button>
+      </div>
+    </div>
+
+    <div class="messages" id="messages">
+      <div class="msg msg-system">
+        <div class="msg-meta">// alvasta</div>
+        <div class="msg-body">Welcome. This is the local web channel for your Alvasta gateway. Send a message below — it routes to a parallel claude session, no queue.</div>
+      </div>
+    </div>
+
+    <form class="composer" id="composer">
+      <textarea
+        id="input"
+        placeholder="Type a message and press Enter to send (Shift+Enter for newline)"
+        rows="2"></textarea>
+      <button class="send" type="submit" id="sendBtn">
+        SEND
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </button>
+    </form>
+  </main>
+
+  <!-- RIGHT: META / DEBUG -->
+  <aside class="meta-panel">
+    <div class="sb-section">
+      <div class="sb-h">// EVENT LOG</div>
+      <div class="event-log" id="eventLog">
+        <div class="ev ev-dim">stream events appear here</div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

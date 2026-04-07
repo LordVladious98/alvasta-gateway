@@ -18,8 +18,25 @@
 //   { type: "pong" }
 
 import { WebSocketServer } from 'ws';
+import { createServer } from 'node:http';
+import { readFileSync, existsSync } from 'node:fs';
+import { resolve, dirname, join, extname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { SessionStore } from './db.js';
 import { SessionManager } from './session.js';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const WEB_DIR = resolve(__dirname, '../web');
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js':   'application/javascript; charset=utf-8',
+  '.css':  'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg':  'image/svg+xml',
+  '.ico':  'image/x-icon'
+};
 
 export class AlvastaGateway {
   constructor({
@@ -42,10 +59,25 @@ export class AlvastaGateway {
     });
     this.wss = null;
     this.clients = new Map(); // ws -> { sessionId, userId, channel }
+    this.adapters = new Map(); // channelName -> ChildProcess
   }
 
   start() {
-    this.wss = new WebSocketServer({ port: this.port, host: this.host });
+    // HTTP server serves the web UI on /, GET endpoints on /api/*, and upgrades to WS on /ws
+    this.http = createServer((req, res) => this.handleHttp(req, res));
+
+    this.wss = new WebSocketServer({ noServer: true });
+    this.http.on('upgrade', (req, socket, head) => {
+      // Accept WS upgrades on / and /ws (so existing clients keep working)
+      if (req.url === '/' || req.url === '/ws') {
+        this.wss.handleUpgrade(req, socket, head, (ws) => {
+          this.wss.emit('connection', ws, req);
+        });
+      } else {
+        socket.destroy();
+      }
+    });
+    this.http.listen(this.port, this.host);
 
     this.wss.on('connection', (ws, req) => {
       this.handleConnection(ws, req);
@@ -66,7 +98,69 @@ export class AlvastaGateway {
     });
 
     console.log(`[gateway] listening on ws://${this.host}:${this.port}`);
+    console.log(`[gateway] http://${this.host}:${this.port} → web ui`);
     console.log(`[gateway] working dir: ${this.workingDir}`);
+
+    // Start configured channel adapters as child processes
+    setTimeout(() => this.startChannels(), 200);
+  }
+
+  startChannels() {
+    // Read user config to find enabled channels
+    const configPath = process.env.ALVASTA_CONFIG_FILE ||
+                       resolve(process.env.HOME || process.env.USERPROFILE || '.', '.alvasta/config.json');
+    if (!existsSync(configPath)) {
+      console.log('[gateway] no config file at ' + configPath + ' — no channels to start');
+      return;
+    }
+    let config;
+    try {
+      config = JSON.parse(readFileSync(configPath, 'utf8'));
+    } catch (e) {
+      console.error('[gateway] failed to read config:', e.message);
+      return;
+    }
+
+    const channelsDir = resolve(__dirname, 'channels');
+    const adapters = {
+      telegram: join(channelsDir, 'telegram-adapter.js')
+    };
+
+    for (const [name, channelConfig] of Object.entries(config.channels || {})) {
+      if (!channelConfig?.enabled) continue;
+      const adapterScript = adapters[name];
+      if (!adapterScript || !existsSync(adapterScript)) {
+        console.log(`[gateway] no adapter for channel: ${name}`);
+        continue;
+      }
+      this.spawnAdapter(name, adapterScript);
+    }
+  }
+
+  spawnAdapter(name, scriptPath) {
+    if (this.adapters.has(name)) return;
+    console.log(`[gateway] starting ${name} adapter...`);
+    const child = spawn('node', [scriptPath], {
+      stdio: ['ignore', 'inherit', 'inherit'],
+      env: { ...process.env, ALVASTA_PORT: String(this.port), ALVASTA_HOST: this.host },
+      windowsHide: true
+    });
+    child.on('exit', (code) => {
+      console.log(`[gateway] ${name} adapter exited (code ${code})`);
+      this.adapters.delete(name);
+    });
+    child.on('error', (err) => {
+      console.error(`[gateway] ${name} adapter error:`, err.message);
+      this.adapters.delete(name);
+    });
+    this.adapters.set(name, child);
+  }
+
+  stopChannels() {
+    for (const [name, child] of this.adapters) {
+      try { child.kill(); } catch {}
+    }
+    this.adapters.clear();
   }
 
   handleConnection(ws, req) {
@@ -166,9 +260,44 @@ export class AlvastaGateway {
   }
 
   stop() {
+    this.stopChannels();
     this.manager.stopAll();
     if (this.wss) this.wss.close();
+    if (this.http) this.http.close();
     this.store.close();
+  }
+
+  // ── HTTP handlers ──
+  handleHttp(req, res) {
+    // API endpoints
+    if (req.url === '/api/status') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify(this.status(), null, 2));
+    }
+    if (req.url === '/api/sessions') {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+      return res.end(JSON.stringify(this.store.listSessions(50), null, 2));
+    }
+
+    // Static files from /web
+    let urlPath = req.url.split('?')[0];
+    if (urlPath === '/') urlPath = '/index.html';
+    const filePath = join(WEB_DIR, urlPath);
+
+    // Prevent path traversal
+    if (!filePath.startsWith(WEB_DIR)) {
+      res.writeHead(403); return res.end('Forbidden');
+    }
+
+    if (existsSync(filePath)) {
+      const ext = extname(filePath);
+      const mime = MIME[ext] || 'application/octet-stream';
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'no-store' });
+      return res.end(readFileSync(filePath));
+    }
+
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('Not found');
   }
 
   status() {

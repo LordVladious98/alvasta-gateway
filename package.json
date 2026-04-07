@@ -1,0 +1,26 @@
+{
+  "name": "@alvasta/gateway",
+  "version": "0.2.0-alpha.1",
+  "description": "Alvasta Gateway — multi-session router for Claude Code. Run N concurrent agents with shared memory and isolated context.",
+  "type": "module",
+  "main": "src/gateway.js",
+  "bin": {
+    "alvasta": "bin/alvasta.js",
+    "alvasta-gateway": "bin/alvasta-gateway.js",
+    "alvasta-telegram": "src/channels/telegram-adapter.js"
+  },
+  "scripts": {
+    "start": "node bin/alvasta-gateway.js",
+    "test": "node test/smoke.js"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "ws": "^8.18.0"
+  },
+  "keywords": ["claude", "claude-code", "agent", "gateway", "alvasta"],
+  "author": "Alvasta IT Solutions <hello@alvasta.com.au>",
+  "license": "MIT"
+}

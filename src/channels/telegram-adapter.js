@@ -147,9 +147,10 @@ class TelegramAdapter {
       ws.on('error', () => this.activeSessions.delete(chatId));
     }
 
-    // Reset buffer for new message
+    // Reset buffer state for new message turn
     sess.buffer = '';
     sess.pendingMessageId = null;
+    sess.sending = false; // serialization lock for sendOrEdit
 
     // Send "typing..." indicator
     fetch(`${this.api}/sendChatAction`, {
@@ -181,31 +182,51 @@ class TelegramAdapter {
   }
 
   async sendOrEdit(chatId, sess, final = false) {
+    // Serialization lock — prevent two concurrent sends/edits.
+    // Without this, a 'text' delta and a 'done' event arriving in quick
+    // succession both find pendingMessageId === null and each create their
+    // own Telegram message, resulting in duplicate responses.
+    if (sess.sending && !final) return;
+    if (sess.sending && final) {
+      // Wait for the in-flight send to finish before flushing
+      while (sess.sending) await new Promise(r => setTimeout(r, 30));
+    }
+
     const text = sess.buffer.slice(0, MAX_MESSAGE_LEN) + (sess.buffer.length > MAX_MESSAGE_LEN ? '\n[truncated]' : '');
     if (!text.trim()) return;
 
-    if (!sess.pendingMessageId) {
-      // Send first message
-      const res = await fetch(`${this.api}/sendMessage`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ chat_id: chatId, text })
-      });
-      const data = await res.json();
-      if (data.ok) {
-        sess.pendingMessageId = data.result.message_id;
+    sess.sending = true;
+    try {
+      if (!sess.pendingMessageId) {
+        // Send first message — claim a placeholder id immediately to prevent
+        // re-entry from creating a second message before we get the real id back
+        sess.pendingMessageId = 'pending';
+        const res = await fetch(`${this.api}/sendMessage`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ chat_id: chatId, text })
+        });
+        const data = await res.json();
+        if (data.ok) {
+          sess.pendingMessageId = data.result.message_id;
+        } else {
+          // Roll back so a retry can happen
+          sess.pendingMessageId = null;
+        }
+      } else if (sess.pendingMessageId !== 'pending') {
+        // Edit existing message
+        await fetch(`${this.api}/editMessageText`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            chat_id: chatId,
+            message_id: sess.pendingMessageId,
+            text
+          })
+        }).catch(() => {});
       }
-    } else {
-      // Edit existing message
-      await fetch(`${this.api}/editMessageText`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          chat_id: chatId,
-          message_id: sess.pendingMessageId,
-          text
-        })
-      }).catch(() => {});
+    } finally {
+      sess.sending = false;
     }
   }
 

@@ -3,6 +3,7 @@
 // Subcommands: onboard, start, stop, restart, status, doctor, channel, memory, config
 import { onboardCmd } from '../src/cli/onboard.js';
 import { startCmd, stopCmd, restartCmd, statusCmd, doctorCmd } from '../src/cli/lifecycle.js';
+import { upgradeCmd } from '../src/cli/upgrade.js';
 import { color } from '../src/cli/util.js';
 
 const VERSION = '0.2.0-alpha.1';
@@ -24,6 +25,7 @@ ${color.bold('Core:')}
   ${color.cyan('restart')}              Restart the gateway daemon
   ${color.cyan('status')}               Show gateway + config + channels status
   ${color.cyan('doctor')}               Diagnose installation issues
+  ${color.cyan('upgrade')}              Pull latest from git, reinstall deps, restart
 
 ${color.bold('Channels:')}
   ${color.cyan('channel list')}         List configured channels
@@ -67,6 +69,10 @@ async function main() {
       break;
     case 'doctor':
       await doctorCmd();
+      break;
+    case 'upgrade':
+    case 'update':
+      await upgradeCmd();
       break;
     case 'channel': {
       const sub = args[1];

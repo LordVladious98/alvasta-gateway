@@ -5,6 +5,8 @@ import { onboardCmd } from '../src/cli/onboard.js';
 import { startCmd, stopCmd, restartCmd, statusCmd, doctorCmd } from '../src/cli/lifecycle.js';
 import { upgradeCmd } from '../src/cli/upgrade.js';
 import { memoryCmd } from '../src/cli/memory.js';
+import { toolCmd } from '../src/cli/tool.js';
+import { daemonCmd } from '../src/cli/daemon.js';
 import { color, PATHS, ensureWorkspace, info } from '../src/cli/util.js';
 
 const VERSION = '0.2.0-alpha.1';
@@ -116,43 +118,13 @@ async function main() {
       await memoryCmd(args.slice(1));
       break;
     case 'tool':
-    case 'tools': {
-      const sub = args[1];
-      const { existsSync, readFileSync } = await import('node:fs');
-      const { join } = await import('node:path');
-      ensureWorkspace();
-      const mcpFile = join(PATHS.workspaceDir, '.mcp.json');
-      if (sub === 'list' || !sub) {
-        if (!existsSync(mcpFile)) {
-          console.log('No .mcp.json at ' + mcpFile);
-          break;
-        }
-        const cfg = JSON.parse(readFileSync(mcpFile, 'utf8'));
-        console.log();
-        console.log('  ' + color.bold('MCP servers in workspace .mcp.json:'));
-        console.log();
-        for (const [name, def] of Object.entries(cfg)) {
-          if (name.startsWith('$') || name.startsWith('_')) {
-            const enabled = name.startsWith('_') ? color.dim('disabled') : color.dim('meta');
-            const cleanName = name.replace(/^_/, '');
-            console.log('  ' + color.cyan(cleanName.padEnd(20)) + ' ' + enabled + (def._note ? '  ' + color.dim(def._note) : ''));
-          } else {
-            console.log('  ' + color.cyan(name.padEnd(20)) + ' ' + color.green('enabled'));
-          }
-        }
-        console.log();
-        info('Edit ' + mcpFile + ' to enable a tool. Rename _name to name.');
-      } else if (sub === 'edit') {
-        const { spawn } = await import('node:child_process');
-        const editor = process.env.EDITOR || (process.platform === 'win32' ? 'notepad' : 'vi');
-        spawn(editor, [mcpFile], { stdio: 'inherit', shell: process.platform === 'win32' });
-      } else if (sub === 'path') {
-        console.log(mcpFile);
-      } else {
-        console.log('Usage: alvasta tool <list|edit|path>');
-      }
+    case 'tools':
+      await toolCmd(args.slice(1));
       break;
-    }
+    case 'daemon':
+    case 'service':
+      await daemonCmd(args.slice(1));
+      break;
     case 'workspace': {
       ensureWorkspace();
       console.log(PATHS.workspaceDir);

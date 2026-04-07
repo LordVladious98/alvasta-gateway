@@ -276,6 +276,114 @@ export async function doctorCmd() {
     info(`port ${port} not in use (gateway not running)`);
   }
 
+  // Check internet connectivity for Anthropic API
+  const inetCheck = spawnSync(IS_WINDOWS ? 'powershell' : 'bash', IS_WINDOWS
+    ? ['-Command', 'Test-NetConnection api.anthropic.com -Port 443 -InformationLevel Quiet']
+    : ['-c', '(echo > /dev/tcp/api.anthropic.com/443) 2>/dev/null && echo OK'], { encoding: 'utf8', timeout: 5000 });
+  if (inetCheck.stdout?.includes('True') || inetCheck.stdout?.includes('OK')) {
+    ok('api.anthropic.com:443 reachable');
+  } else {
+    warn('api.anthropic.com unreachable — Claude API will fail'); inc('warn');
+  }
+
+  // ─── MCP servers ───
+  console.log();
+  console.log(color.dim('[mcp servers]'));
+  const mcpFile = resolve(PATHS.workspaceDir, '.mcp.json');
+  if (existsSync(mcpFile)) {
+    let mcpData = {};
+    try {
+      mcpData = JSON.parse(readFileSync(mcpFile, 'utf8'));
+      const enabled = Object.keys(mcpData).filter(k => !k.startsWith('_') && !k.startsWith('$'));
+      const disabled = Object.keys(mcpData).filter(k => k.startsWith('_'));
+      ok(`${enabled.length} enabled, ${disabled.length} disabled`);
+      if (enabled.length) {
+        info('enabled: ' + enabled.join(', '));
+      }
+      // Validate enabled servers have required env vars
+      for (const name of enabled) {
+        const def = mcpData[name];
+        if (def.env) {
+          for (const [k, v] of Object.entries(def.env)) {
+            if (typeof v === 'string' && (v.includes('your-') || v.includes('-here') || v === '')) {
+              warn(`${name}: env ${k} looks unset (placeholder value)`); inc('warn');
+            }
+          }
+        }
+      }
+    } catch (e) {
+      fail('invalid .mcp.json: ' + e.message); inc('fail');
+    }
+  } else {
+    info('no .mcp.json (will be created on next gateway start)');
+  }
+
+  // ─── Disk space ───
+  console.log();
+  console.log(color.dim('[disk]'));
+  try {
+    const dfCmd = IS_WINDOWS
+      ? spawnSync('powershell', ['-Command', `(Get-PSDrive ${PATHS.home.charAt(0)}).Free`], { encoding: 'utf8' })
+      : spawnSync('df', ['-h', PATHS.home], { encoding: 'utf8' });
+    if (dfCmd.status === 0) {
+      const out = dfCmd.stdout.trim();
+      if (IS_WINDOWS) {
+        const freeBytes = parseInt(out, 10);
+        const freeGb = (freeBytes / 1e9).toFixed(1);
+        if (freeBytes < 1e9) {
+          fail(`free space: ${freeGb} GB (low!)`); inc('fail');
+        } else {
+          ok(`free space: ${freeGb} GB`);
+        }
+      } else {
+        // Skip parsing df, just print the relevant line
+        const lines = out.split('\n');
+        if (lines.length > 1) info(lines[lines.length - 1].trim());
+        ok('disk check ran');
+      }
+    }
+  } catch {}
+
+  // ─── Permissions ───
+  console.log();
+  console.log(color.dim('[permissions]'));
+  // Verify we can write to the config dir
+  try {
+    const testFile = resolve(PATHS.configDir, '.write-test');
+    writeFileSync(testFile, 'ok');
+    unlinkSync(testFile);
+    ok('config dir writable');
+  } catch (e) {
+    fail('config dir not writable: ' + e.message); inc('fail');
+  }
+  // Verify we can write to the workspace dir
+  try {
+    const testFile = resolve(PATHS.workspaceDir, '.write-test');
+    writeFileSync(testFile, 'ok');
+    unlinkSync(testFile);
+    ok('workspace dir writable');
+  } catch (e) {
+    warn('workspace dir not writable: ' + e.message); inc('warn');
+  }
+
+  // ─── Auto-start daemon ───
+  console.log();
+  console.log(color.dim('[autostart]'));
+  let autostartFound = false;
+  if (IS_WINDOWS) {
+    const sched = spawnSync('schtasks', ['/Query', '/TN', 'AlvastaGateway'], { encoding: 'utf8' });
+    if (sched.status === 0) { ok('Task Scheduler entry: AlvastaGateway'); autostartFound = true; }
+  } else if (process.platform === 'darwin') {
+    const launchd = resolve(PATHS.home, 'Library/LaunchAgents/au.com.alvasta.gateway.plist');
+    if (existsSync(launchd)) { ok('LaunchAgent: ' + launchd); autostartFound = true; }
+  } else {
+    const systemd = resolve(PATHS.home, '.config/systemd/user/alvasta-gateway.service');
+    if (existsSync(systemd)) { ok('systemd unit: ' + systemd); autostartFound = true; }
+  }
+  if (!autostartFound) {
+    info('not configured for auto-start (run: alvasta daemon install)');
+  }
+
   // ─── Summary ───
   console.log();
   if (issues === 0 && warnings === 0) {

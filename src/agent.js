@@ -7,6 +7,9 @@
 
 import { spawn } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+import { platform } from 'node:os';
+
+const IS_WINDOWS = platform() === 'win32';
 
 export class AgentRunner extends EventEmitter {
   constructor({ sessionId, claudeSessionId, workingDir, options = {} }) {
@@ -46,7 +49,9 @@ export class AgentRunner extends EventEmitter {
     this.proc = spawn('claude', args, {
       cwd: this.workingDir,
       env: { ...process.env, ...this.options.env },
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      shell: IS_WINDOWS, // Windows needs shell:true to find .cmd shims
+      windowsHide: true
     });
 
     this.proc.stdout.on('data', (chunk) => this.handleStdout(chunk));

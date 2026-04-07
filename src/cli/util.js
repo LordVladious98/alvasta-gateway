@@ -1,8 +1,11 @@
-// Shared CLI utilities — colors, prompts, paths
-import { homedir } from 'node:os';
+// Shared CLI utilities — colors, prompts, paths, cross-platform helpers
+import { homedir, platform } from 'node:os';
 import { resolve, join } from 'node:path';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
+import { spawnSync, spawn } from 'node:child_process';
+
+export const IS_WINDOWS = platform() === 'win32';
 
 const isTTY = process.stdout.isTTY;
 const c = (code) => (s) => isTTY ? `\x1b[${code}m${s}\x1b[0m` : s;
@@ -105,3 +108,41 @@ export function ok(msg) { console.log('  ' + ICON.ok + ' ' + msg); }
 export function fail(msg) { console.log('  ' + ICON.fail + ' ' + color.red(msg)); }
 export function info(msg) { console.log('  ' + ICON.arrow + ' ' + color.dim(msg)); }
 export function warn(msg) { console.log('  ' + ICON.warn + ' ' + color.yellow(msg)); }
+
+// ── Cross-platform claude helpers ──
+// On Windows, npm-installed CLIs are .cmd shims; spawn() needs shell:true
+// to find them via PATH lookup. On Unix it doesn't hurt either.
+const SPAWN_OPTS = { shell: IS_WINDOWS };
+
+/**
+ * Try to find the claude binary by attempting to run `claude --version`.
+ * Returns { found: bool, version?: string, error?: string }.
+ * Cross-platform — no `which`/`where` dependency.
+ */
+export function findClaude() {
+  try {
+    const r = spawnSync('claude', ['--version'], { ...SPAWN_OPTS, timeout: 5000 });
+    if (r.status === 0) {
+      return { found: true, version: (r.stdout || Buffer.from('')).toString().trim() };
+    }
+    return { found: false, error: (r.stderr || Buffer.from('')).toString().trim() || 'exit code ' + r.status };
+  } catch (err) {
+    return { found: false, error: err.message };
+  }
+}
+
+/**
+ * Run `claude` with args, returning the spawnSync result.
+ * Cross-platform.
+ */
+export function runClaude(args, opts = {}) {
+  return spawnSync('claude', args, { ...SPAWN_OPTS, ...opts });
+}
+
+/**
+ * Spawn `claude` with args, returning the ChildProcess.
+ * Cross-platform.
+ */
+export function spawnClaude(args, opts = {}) {
+  return spawn('claude', args, { ...SPAWN_OPTS, ...opts });
+}

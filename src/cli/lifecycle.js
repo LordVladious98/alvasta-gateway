@@ -1,9 +1,9 @@
-// alvasta start / stop / restart / status / doctor
+// alvasta start / stop / restart / status / doctor — cross-platform
 import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync, unlinkSync, openSync, closeSync, statSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { color, header, ok, fail, info, warn, loadConfig, PATHS } from './util.js';
+import { color, header, ok, fail, info, warn, loadConfig, PATHS, IS_WINDOWS, findClaude, runClaude } from './util.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const GATEWAY_BIN = resolve(__dirname, '../../bin/alvasta-gateway.js');
@@ -52,6 +52,7 @@ export async function startCmd() {
   const child = spawn('node', [GATEWAY_BIN, '--port', String(config.port), '--db', PATHS.dbFile], {
     detached: true,
     stdio: ['ignore', logFd, logFd],
+    windowsHide: true,
     env: {
       ...process.env,
       ALVASTA_PORT: String(config.port),
@@ -85,14 +86,19 @@ export async function stopCmd() {
     return;
   }
   try {
-    process.kill(pid, 'SIGTERM');
-    await new Promise(r => setTimeout(r, 800));
-    // Force kill if still alive
-    try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch {}
+    if (IS_WINDOWS) {
+      // Windows: use taskkill, signals don't translate cleanly
+      spawnSync('taskkill', ['/F', '/T', '/PID', String(pid)]);
+    } else {
+      process.kill(pid, 'SIGTERM');
+      await new Promise(r => setTimeout(r, 800));
+      try { process.kill(pid, 0); process.kill(pid, 'SIGKILL'); } catch {}
+    }
     clearPid();
     ok(`Gateway stopped (was PID ${pid})`);
   } catch (err) {
     fail('Failed to stop: ' + err.message);
+    clearPid();
   }
 }
 
@@ -150,18 +156,17 @@ export async function doctorCmd() {
 
   console.log();
   console.log(color.dim('[claude code]'));
-  const which = spawnSync('which', ['claude']);
-  if (which.status === 0) {
-    ok('installed at ' + which.stdout.toString().trim());
-    const ver = spawnSync('claude', ['--version']);
-    if (ver.status === 0) ok('version ' + ver.stdout.toString().trim());
-
-    const test = spawnSync('claude', ['--print', 'reply OK'], { timeout: 30000 });
+  const detect = findClaude();
+  if (detect.found) {
+    ok('installed');
+    ok('version ' + detect.version);
+    const test = runClaude(['--print', 'reply OK'], { timeout: 30000 });
     if (test.status === 0) ok('auth working');
-    else { fail('auth failed: ' + test.stderr.toString().slice(0, 100)); issues++; }
+    else { fail('auth failed: ' + ((test.stderr || Buffer.from('')).toString().slice(0, 100) || 'no output')); issues++; }
   } else {
     fail('not installed');
     info('Install: npm install -g @anthropic-ai/claude-code');
+    if (detect.error) info('Detail: ' + detect.error);
     issues++;
   }
 

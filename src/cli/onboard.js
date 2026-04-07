@@ -1,43 +1,43 @@
 // alvasta onboard — first-run setup wizard
 //
-// 1. Check Claude Code is installed
+// 1. Check Claude Code is installed (cross-platform)
 // 2. Run `claude setup-token` (Claude Code's own auth flow)
 // 3. Verify Claude works with a test prompt
-// 4. Optionally configure first channel (telegram/discord/web)
-// 5. Save config, advise on starting the gateway
+// 4. Optionally configure first channel
+// 5. Save config
 
-import { spawn, spawnSync } from 'node:child_process';
-import { color, header, step, ok, fail, info, warn, prompt, promptChoice, loadConfig, saveConfig } from './util.js';
+import { color, header, step, ok, fail, info, warn, prompt, promptChoice,
+         loadConfig, saveConfig, findClaude, runClaude, PATHS } from './util.js';
 import { setupTelegram } from './channels/telegram.js';
 
 export async function onboardCmd() {
   header('ONBOARDING');
-
   const config = loadConfig();
 
   // ─── 1. Check Claude Code ───
   step(1, 5, 'Checking Claude Code...');
-  const which = spawnSync('which', ['claude']);
-  if (which.status !== 0) {
+  const detect = findClaude();
+  if (!detect.found) {
     fail('claude not found in PATH');
     info('Install with: npm install -g @anthropic-ai/claude-code');
+    info('Then re-run: alvasta onboard');
+    if (detect.error) info('Detail: ' + detect.error);
     process.exit(1);
   }
-  ok('claude found at ' + which.stdout.toString().trim());
-  const ver = spawnSync('claude', ['--version']);
-  if (ver.status === 0) {
-    ok('version ' + ver.stdout.toString().trim());
-  }
+  ok('claude found');
+  ok('version ' + detect.version);
 
   // ─── 2. Authenticate ───
   step(2, 5, 'Authenticating with Anthropic...');
-  const authCheck = spawnSync('claude', ['--print', 'reply with just OK'], { timeout: 30000 });
-  if (authCheck.status === 0 && authCheck.stdout.toString().trim().toLowerCase().includes('ok')) {
+  info('Testing if already authenticated...');
+  const authCheck = runClaude(['--print', 'reply with just OK'], { timeout: 30000 });
+  const authOut = (authCheck.stdout || Buffer.from('')).toString().trim().toLowerCase();
+  if (authCheck.status === 0 && authOut.includes('ok')) {
     ok('Already authenticated.');
   } else {
     info('Running: claude setup-token');
     info('A browser window may open. Sign in with your Claude account.');
-    const setup = spawnSync('claude', ['setup-token'], { stdio: 'inherit' });
+    const setup = runClaude(['setup-token'], { stdio: 'inherit' });
     if (setup.status !== 0) {
       fail('Authentication failed.');
       process.exit(1);
@@ -48,12 +48,12 @@ export async function onboardCmd() {
   // ─── 3. Verify ───
   step(3, 5, 'Verifying Claude works...');
   info('Sending test prompt...');
-  const test = spawnSync('claude', ['--print', 'reply with just the word READY'], { timeout: 60000 });
+  const test = runClaude(['--print', 'reply with just the word READY'], { timeout: 60000 });
   if (test.status !== 0) {
-    fail('Test failed: ' + test.stderr.toString().trim());
+    fail('Test failed: ' + ((test.stderr || Buffer.from('')).toString().trim() || 'no error output'));
     process.exit(1);
   }
-  const out = test.stdout.toString().trim();
+  const out = (test.stdout || Buffer.from('')).toString().trim();
   if (out.toLowerCase().includes('ready')) {
     ok('Claude responded: ' + out.slice(0, 60));
   } else {
@@ -87,7 +87,7 @@ export async function onboardCmd() {
   config.onboarded = true;
   config.onboardedAt = new Date().toISOString();
   saveConfig(config);
-  ok('Config saved to ' + color.dim(require('node:path').join(require('node:os').homedir(), '.alvasta/config.json')));
+  ok('Config saved to ' + color.dim(PATHS.configFile));
 
   console.log();
   console.log(color.bold(color.green('═══════════════════════════════')));

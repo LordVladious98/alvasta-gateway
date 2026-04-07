@@ -56,9 +56,13 @@ export class AgentRunner extends EventEmitter {
       '--output-format', 'stream-json',
       '--verbose', // required by Claude Code when using stream-json output
       '--include-partial-messages',
-      '--permission-mode', this.options.permissionMode || 'bypassPermissions'
-      // bypassPermissions auto-approves everything; --dangerously-skip-permissions
-      // is for sandboxes with no internet and may interact poorly with stream-json mode
+      // Hard bypass: in non-interactive gateway mode, there is NO human at a
+      // terminal to answer permission prompts. We must guarantee no tool call
+      // ever blocks. --dangerously-skip-permissions is the only flag that
+      // actually skips the prompt entirely (--permission-mode bypassPermissions
+      // alone still surfaces permission events that the model interprets as
+      // "ask the user to approve").
+      '--dangerously-skip-permissions'
     ];
 
     if (this.claudeSessionId) {
@@ -69,10 +73,12 @@ export class AgentRunner extends EventEmitter {
       args.push('--model', this.options.model);
     }
 
-    // Always inject the Alvasta persona; user can append more via systemPromptAppend
+    // REPLACE Claude Code's default "software engineering agent" persona entirely
+    // with the Alvasta personal-assistant persona. --append-system-prompt only
+    // adds to the default which loses to it; --system-prompt replaces.
     const systemPrompt = DEFAULT_SYSTEM_PROMPT +
                          (this.options.systemPromptAppend ? '\n\n' + this.options.systemPromptAppend : '');
-    args.push('--append-system-prompt', systemPrompt);
+    args.push('--system-prompt', systemPrompt);
 
     this.proc = spawn('claude', args, {
       cwd: this.workingDir,

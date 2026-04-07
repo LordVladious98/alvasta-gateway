@@ -222,6 +222,13 @@ ui.reconnectBtn.addEventListener('click', () => {
   connect();
 });
 
+// ── Service worker (PWA install + offline shell) ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
 // ── Boot ──
 connect();
 pollStatus();

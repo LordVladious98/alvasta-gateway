@@ -4,7 +4,8 @@
 import { onboardCmd } from '../src/cli/onboard.js';
 import { startCmd, stopCmd, restartCmd, statusCmd, doctorCmd } from '../src/cli/lifecycle.js';
 import { upgradeCmd } from '../src/cli/upgrade.js';
-import { color } from '../src/cli/util.js';
+import { memoryCmd } from '../src/cli/memory.js';
+import { color, PATHS, ensureWorkspace, info } from '../src/cli/util.js';
 
 const VERSION = '0.2.0-alpha.1';
 
@@ -37,11 +38,20 @@ ${color.bold('Sessions:')}
   ${color.cyan('session show <id>')}    Show session details
 
 ${color.bold('Memory:')}
-  ${color.cyan('memory show')}          List memory files
+  ${color.cyan('memory show')}          List memory files with sizes
+  ${color.cyan('memory search <q>')}    Search memory for a term (highlighted matches)
   ${color.cyan('memory edit')}          Open memory dir in $EDITOR
-  ${color.cyan('memory backup')}        Backup memory directory
+  ${color.cyan('memory backup [name]')} Backup memory directory
+  ${color.cyan('memory restore <name>')} Restore from a backup
+  ${color.cyan('memory path')}          Print the memory directory path
+
+${color.bold('Tools (MCP servers):')}
+  ${color.cyan('tool list')}            List configured MCP servers
+  ${color.cyan('tool edit')}            Edit workspace .mcp.json
+  ${color.cyan('tool path')}            Print the .mcp.json path
 
 ${color.bold('Other:')}
+  ${color.cyan('workspace')}            Print the alvasta workspace dir
   ${color.cyan('config')}               Edit config in $EDITOR
   ${color.cyan('chat')}                 Start an interactive chat session
   ${color.cyan('version')}              Show version
@@ -102,29 +112,50 @@ async function main() {
       }
       break;
     }
-    case 'memory': {
+    case 'memory':
+      await memoryCmd(args.slice(1));
+      break;
+    case 'tool':
+    case 'tools': {
       const sub = args[1];
-      const { spawn } = await import('node:child_process');
-      const { homedir } = await import('node:os');
+      const { existsSync, readFileSync } = await import('node:fs');
       const { join } = await import('node:path');
-      const { existsSync, readdirSync, statSync } = await import('node:fs');
-      const memDir = join(homedir(), '.claude/projects/-home-' + process.env.USER + '/memory');
-      if (!existsSync(memDir)) {
-        console.log('No memory directory at ' + memDir);
-        break;
-      }
-      if (sub === 'show' || !sub) {
-        const files = readdirSync(memDir).filter(f => f.endsWith('.md'));
-        console.log(`\n${color.bold('Memory:')} ${color.dim(memDir)}\n`);
-        files.forEach(f => {
-          const s = statSync(join(memDir, f));
-          console.log(`  ${color.cyan(f.padEnd(40))} ${color.dim((s.size / 1024).toFixed(1) + ' KB')}`);
-        });
+      ensureWorkspace();
+      const mcpFile = join(PATHS.workspaceDir, '.mcp.json');
+      if (sub === 'list' || !sub) {
+        if (!existsSync(mcpFile)) {
+          console.log('No .mcp.json at ' + mcpFile);
+          break;
+        }
+        const cfg = JSON.parse(readFileSync(mcpFile, 'utf8'));
         console.log();
+        console.log('  ' + color.bold('MCP servers in workspace .mcp.json:'));
+        console.log();
+        for (const [name, def] of Object.entries(cfg)) {
+          if (name.startsWith('$') || name.startsWith('_')) {
+            const enabled = name.startsWith('_') ? color.dim('disabled') : color.dim('meta');
+            const cleanName = name.replace(/^_/, '');
+            console.log('  ' + color.cyan(cleanName.padEnd(20)) + ' ' + enabled + (def._note ? '  ' + color.dim(def._note) : ''));
+          } else {
+            console.log('  ' + color.cyan(name.padEnd(20)) + ' ' + color.green('enabled'));
+          }
+        }
+        console.log();
+        info('Edit ' + mcpFile + ' to enable a tool. Rename _name to name.');
       } else if (sub === 'edit') {
-        const editor = process.env.EDITOR || 'vi';
-        spawn(editor, [memDir], { stdio: 'inherit' });
+        const { spawn } = await import('node:child_process');
+        const editor = process.env.EDITOR || (process.platform === 'win32' ? 'notepad' : 'vi');
+        spawn(editor, [mcpFile], { stdio: 'inherit', shell: process.platform === 'win32' });
+      } else if (sub === 'path') {
+        console.log(mcpFile);
+      } else {
+        console.log('Usage: alvasta tool <list|edit|path>');
       }
+      break;
+    }
+    case 'workspace': {
+      ensureWorkspace();
+      console.log(PATHS.workspaceDir);
       break;
     }
     case 'version':

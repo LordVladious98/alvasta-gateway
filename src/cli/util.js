@@ -119,6 +119,63 @@ When the user references "what I was doing" or "where I left off", read \`projec
 This directory (~/.alvasta/workspace) is your dedicated workspace. You have full read/write access here. Use it for scratch files, downloads, generated content, etc. Do NOT change directory unless the user asks you to work on a specific project elsewhere.
 `;
 
+const WORKSPACE_MCP_TEMPLATE = `{
+  "$comment": "Alvasta workspace MCP server registry. Uncomment any block below to enable that capability for your gateway sessions. Each block needs the relevant npm package installed (npm install -g <package>) and the relevant API key in your environment.",
+
+  "_filesystem": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-filesystem", "\${HOME}"],
+    "_note": "Full filesystem access. Rename _filesystem to filesystem to enable."
+  },
+
+  "_puppeteer": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
+    "_note": "Browser automation via Puppeteer. Rename _puppeteer to puppeteer to enable."
+  },
+
+  "_brave-search": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-brave-search"],
+    "env": { "BRAVE_API_KEY": "your-key-here" },
+    "_note": "Web search. Get a free API key at https://brave.com/search/api/"
+  },
+
+  "_github": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-github"],
+    "env": { "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_..." },
+    "_note": "GitHub API. Get a token at https://github.com/settings/tokens"
+  },
+
+  "_image-gen": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@falai/mcp-server"],
+    "env": { "FAL_KEY": "your-fal-key" },
+    "_note": "Image generation via Fal.ai. Get a key at https://fal.ai"
+  },
+
+  "_postgres": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-postgres", "postgresql://user:pass@host/db"],
+    "_note": "PostgreSQL database access"
+  },
+
+  "_sqlite": {
+    "type": "stdio",
+    "command": "npx",
+    "args": ["-y", "@modelcontextprotocol/server-sqlite", "\${HOME}/.alvasta/workspace/notes.db"],
+    "_note": "SQLite database for notes/persistence"
+  }
+}
+`;
+
 export function ensureWorkspace() {
   ensureConfigDir();
   if (!existsSync(PATHS.workspaceDir)) {
@@ -126,6 +183,11 @@ export function ensureWorkspace() {
   }
   // Always rewrite CLAUDE.md to the latest version (cheap, ensures upgrades)
   writeFileSync(PATHS.claudeMdFile, ALVASTA_CLAUDE_MD);
+  // Only write the .mcp.json template if it doesn't exist (don't clobber user edits)
+  const mcpFile = join(PATHS.workspaceDir, '.mcp.json');
+  if (!existsSync(mcpFile)) {
+    writeFileSync(mcpFile, WORKSPACE_MCP_TEMPLATE);
+  }
 }
 
 export function loadConfig() {

@@ -153,7 +153,10 @@ export async function statusCmd() {
 export async function doctorCmd() {
   header('DOCTOR');
   let issues = 0;
+  let warnings = 0;
+  const inc = (level) => level === 'fail' ? issues++ : warnings++;
 
+  // ─── Claude Code ───
   console.log();
   console.log(color.dim('[claude code]'));
   const detect = findClaude();
@@ -162,14 +165,15 @@ export async function doctorCmd() {
     ok('version ' + detect.version);
     const test = runClaude(['--print', 'reply OK'], { timeout: 30000 });
     if (test.status === 0) ok('auth working');
-    else { fail('auth failed: ' + ((test.stderr || Buffer.from('')).toString().slice(0, 100) || 'no output')); issues++; }
+    else { fail('auth failed: ' + ((test.stderr || Buffer.from('')).toString().slice(0, 100) || 'no output')); inc('fail'); }
   } else {
     fail('not installed');
     info('Install: npm install -g @anthropic-ai/claude-code');
     if (detect.error) info('Detail: ' + detect.error);
-    issues++;
+    inc('fail');
   }
 
+  // ─── Node ───
   console.log();
   console.log(color.dim('[node]'));
   const nodeVer = process.version;
@@ -177,26 +181,109 @@ export async function doctorCmd() {
     ok('node ' + nodeVer);
   } else {
     fail('node ' + nodeVer + ' (need >= 22)');
-    issues++;
+    inc('fail');
   }
 
+  // ─── Git ───
+  console.log();
+  console.log(color.dim('[git]'));
+  const git = spawnSync('git', ['--version'], { encoding: 'utf8', shell: IS_WINDOWS });
+  if (git.status === 0) ok(git.stdout.trim());
+  else { warn('git not installed (alvasta upgrade requires it)'); inc('warn'); }
+
+  // ─── Config + workspace ───
   console.log();
   console.log(color.dim('[config]'));
   const config = loadConfig();
   if (config.onboarded) ok('onboarded');
-  else { warn('not onboarded — run: alvasta onboard'); issues++; }
+  else { warn('not onboarded — run: alvasta onboard'); inc('warn'); }
+  info('config: ' + PATHS.configFile);
+  info('workspace: ' + PATHS.workspaceDir);
+  if (existsSync(PATHS.claudeMdFile)) ok('CLAUDE.md persona present');
+  else { warn('CLAUDE.md missing — run alvasta start to recreate'); inc('warn'); }
 
+  // ─── Channels ───
+  console.log();
+  console.log(color.dim('[channels]'));
+  const channels = Object.entries(config.channels || {});
+  if (!channels.length) {
+    warn('no channels configured');
+    inc('warn');
+  } else {
+    for (const [name, c] of channels) {
+      if (c.enabled) ok(`${name}: enabled`);
+      else info(`${name}: disabled`);
+    }
+  }
+
+  // ─── Gateway ───
   console.log();
   console.log(color.dim('[gateway]'));
   const pid = readPid();
-  if (pid) ok(`running (PID ${pid})`);
-  else warn('not running');
-
-  console.log();
-  if (issues === 0) {
-    console.log('  ' + color.green('All checks passed.'));
+  if (pid) {
+    ok(`running (PID ${pid})`);
+    info('port: ' + (config.port || 18789));
   } else {
-    console.log('  ' + color.yellow(`${issues} issue(s) found.`));
+    warn('not running');
+    inc('warn');
+  }
+
+  // ─── Database ───
+  console.log();
+  console.log(color.dim('[database]'));
+  if (existsSync(PATHS.dbFile)) {
+    const stat = statSync(PATHS.dbFile);
+    ok('sessions store: ' + (stat.size / 1024).toFixed(1) + ' KB');
+  } else {
+    info('sessions store: not yet created');
+  }
+
+  // ─── Logs ───
+  console.log();
+  console.log(color.dim('[logs]'));
+  if (existsSync(PATHS.logFile)) {
+    const stat = statSync(PATHS.logFile);
+    info('gateway.log: ' + (stat.size / 1024).toFixed(1) + ' KB');
+    if (stat.size > 10 * 1024 * 1024) {
+      warn('log file > 10MB, consider rotating'); inc('warn');
+    }
+  }
+
+  // ─── Memory ───
+  console.log();
+  console.log(color.dim('[memory]'));
+  const claudeProjects = resolve(PATHS.home, '.claude/projects');
+  if (existsSync(claudeProjects)) {
+    ok('claude projects dir present');
+  } else {
+    warn('no ~/.claude/projects (memory needs Claude Code to have run at least once)');
+    inc('warn');
+  }
+
+  // ─── Network ───
+  console.log();
+  console.log(color.dim('[network]'));
+  // Quick TCP check on the configured port
+  const port = config.port || 18789;
+  const portCheck = spawnSync(IS_WINDOWS ? 'powershell' : 'bash', IS_WINDOWS
+    ? ['-Command', `Test-NetConnection -ComputerName 127.0.0.1 -Port ${port} -InformationLevel Quiet`]
+    : ['-c', `(echo > /dev/tcp/127.0.0.1/${port}) 2>/dev/null && echo OK`], { encoding: 'utf8' });
+  if (portCheck.stdout?.includes('True') || portCheck.stdout?.includes('OK')) {
+    ok(`port ${port} reachable`);
+  } else if (pid) {
+    warn(`port ${port} not reachable (gateway PID ${pid} but socket not listening?)`); inc('warn');
+  } else {
+    info(`port ${port} not in use (gateway not running)`);
+  }
+
+  // ─── Summary ───
+  console.log();
+  if (issues === 0 && warnings === 0) {
+    console.log('  ' + color.green('All checks passed.'));
+  } else if (issues === 0) {
+    console.log('  ' + color.yellow(`${warnings} warning(s).`));
+  } else {
+    console.log('  ' + color.red(`${issues} issue(s)`) + ', ' + color.yellow(`${warnings} warning(s).`));
   }
   console.log();
 }

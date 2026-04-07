@@ -31,8 +31,9 @@ export class AgentRunner extends EventEmitter {
       '--output-format', 'stream-json',
       '--verbose', // required by Claude Code when using stream-json output
       '--include-partial-messages',
-      '--permission-mode', this.options.permissionMode || 'bypassPermissions',
-      '--dangerously-skip-permissions' // gateway sessions are non-interactive; never prompt
+      '--permission-mode', this.options.permissionMode || 'bypassPermissions'
+      // bypassPermissions auto-approves everything; --dangerously-skip-permissions
+      // is for sandboxes with no internet and may interact poorly with stream-json mode
     ];
 
     if (this.claudeSessionId) {
